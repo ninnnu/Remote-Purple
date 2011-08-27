@@ -11,3 +11,6 @@ There seems to be some issues with keeping client, server and the Pidgin/Finch i
 == TODO ==
 Support connecting/disconnecting accounts. 
 Possibly managing file transfers etc. more advanced features that are available via DBus.
+
+== Licence ==
+GNU GPLv3. See LICENCE
