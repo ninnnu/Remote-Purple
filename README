@@ -1,0 +1,13 @@
+Remote Purple is a remote controller for Finch and Pidgin (http://pidgin.im). It enables using Pidgin/Finch remotely without
+direct graphical/terminal access in a manner similar to Quassel IRC.
+
+== Usage ==
+Put rp-server.py and purple_pb2.py to the computer running Pidgin or Finch, run it with "./rp-server.py PASSWORD".
+Client-side needs RPClient.py, rp-gtk-client.py and purple_pb2.py. Launch it with "./rp-gtk-client.py SERVER PASSWORD".
+
+== Known bugs ==
+There seems to be some issues with keeping client, server and the Pidgin/Finch itself in sync with conversations.
+
+== TODO ==
+Support connecting/disconnecting accounts. 
+Possibly managing file transfers etc. more advanced features that are available via DBus.

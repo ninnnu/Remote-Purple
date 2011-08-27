@@ -1,0 +1,32 @@
+message IM {
+    required int32 conversation = 1;
+    optional string sender = 2;
+    required string message = 3;
+    optional int32 timestamp = 4;
+}
+
+message Conversation {
+    required int32 conversationID = 1;
+    required int32 accountID = 2;
+    optional string name = 3;
+    repeated IM messages = 4;
+}
+
+message Presence {
+    required int32 buddyID = 1;
+    optional string alias = 2;
+    required string state = 3;
+    optional string extended_status = 4;
+}
+
+message Account {
+    required int32 accountID = 1;
+    required Presence ownpresence = 2;
+    optional string protocol = 3;
+    repeated Presence buddylist = 4;
+}
+
+message Status {
+    repeated Account accounts = 1;
+    repeated Conversation conversations = 2;
+}
