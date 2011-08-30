@@ -35,10 +35,8 @@ class RPClient:
         payload_len = int(buf[:buf.find(";")])
         payload = buf[buf.find(";")+1:]
         while(len(payload) < payload_len):
-            print str(len(payload))+" / "+str(payload_len)
             buf = self.s.recv(payload_len - len(payload)) # We've already received a part of the payload. Try to figure out how much
             payload = payload+buf
-        print str(len(payload))+" / "+str(payload_len)
         return payload
 
     def listen_update(self):
@@ -48,7 +46,6 @@ class RPClient:
         payload = received[received.find(";")+1:]
         print rectype
         if(rectype == "IM"):
-            print "IM received"
             temp = purple_pb2.IM()
             temp.ParseFromString(payload)
             convID = 0
@@ -88,7 +85,6 @@ class RPClient:
         return self.status.conversations
 
     def get_buddyname(self, buddyid):
-        print self.buddies[buddyid]
         return self.buddies[buddyid].alias
 
     def protosend(self, payload, payload_type=None):
