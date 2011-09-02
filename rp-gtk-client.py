@@ -60,6 +60,7 @@ class Conversations:
         self.window.connect("delete_event", self.delete_event)
         self.notebook = gtk.Notebook()
         self.notebook.set_tab_pos(gtk.POS_TOP)
+        self.notebook.connect("switch-page", self.switch_event)
 
         self.toolbar = gtk.Toolbar()
         self.close = gtk.ToolButton(gtk.STOCK_CLOSE)
@@ -117,14 +118,13 @@ class Conversations:
         # Scroll to down
         convname = self.conversations[convID][0].name
         i = 0
-        while(i <= self.notebook.get_n_pages()):
-            if(self.notebook.get_tab_label_text(self.notebook.get_nth_page(i)) == convname):
-                vpaned = self.notebook.get_nth_page(i)
-                scrollwin = vpaned.get_child1()
-                convlog = scrollwin.get_child()
-                convlog.scroll_to_mark(self.conversations[convID][1].get_insert(),0)
-                break
-            i = i+1
+        page_id = self.convID_to_page(convID)
+        vpaned = self.notebook.get_nth_page(page_id)
+        scrollwin = vpaned.get_child1()
+        convlog = scrollwin.get_child()
+        convlog.scroll_to_mark(self.conversations[convID][1].get_insert(),0)
+        if(self.notebook.get_current_page() != self.convID_to_page(convID)):
+            self.hilight_conv(convID, "red")
         return
     
     def new_conversation(self, conv):
@@ -159,28 +159,44 @@ class Conversations:
         self.notebook.append_page(vpaned, label)
 
     def delete_conversation(self, convID):
-        convname = self.conversations[convID][0].name
-        i = 0
-        while(i <= self.notebook.get_n_pages()):
-            if(self.notebook.get_tab_label_text(self.notebook.get_nth_page(i)) == convname):
-                self.notebook.remove_page(i)
-                break
-            i = i+1
+        page_id = self.convID_to_page(convID)
+        self.notebook.remove_page(page_id)
         del self.conversations[convID]
         return
 
     def close_conversation(self, foo):
-        current_page = self.notebook.get_current_page()
-        convname = self.notebook.get_tab_label_text(self.notebook.get_nth_page(current_page))
+        convID = page_to_convID(self.notebook.get_current_page())
+        conv = purple_pb2.Conversation()
+        conv.conversationID = convID
+        conv.accountID = 0
+        rp.protosend(conv, "DeleteConversation")
+        return
+                
+    def hilight_conv(self, convID, color):
+        convname = self.conversations[convID][0].name
+        page_id = self.convID_to_page(convID)
+        label = self.notebook.get_tab_label(self.notebook.get_nth_page(page_id))
+        label.set_markup("<span foreground=\""+color+"\">"+convname+"</span>")
+        return
+
+    def page_to_convID(self, page_num):
+        convname = self.notebook.get_tab_label_text(self.notebook.get_nth_page(page_num))
         for convID in self.conversations:
             if self.conversations[convID][0].name == convname:
-                conv = purple_pb2.Conversation()
-                conv.conversationID = convID
-                conv.accountID = 0
-                rp.protosend(conv, "DeleteConversation")
-                # Deleting tab happens when server answers with another "DeleteConversation"
-                break
-                
+                return convID
+    
+    def convID_to_page(self, convID):
+        convname = self.conversations[convID][0].name
+        i = 0
+        while(i <= self.notebook.get_n_pages()):
+            if(self.notebook.get_tab_label_text(self.notebook.get_nth_page(i)) == convname):
+                return i
+            else:
+                i = i+1
+
+    def switch_event(self, notebook, page, page_num):
+        self.hilight_conv(self.page_to_convID(page_num), "black")
+        return
 
 class BuddyList:
     # close the window and quit
