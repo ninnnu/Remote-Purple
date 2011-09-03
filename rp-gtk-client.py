@@ -123,7 +123,7 @@ class Conversations:
         scrollwin = vpaned.get_child1()
         convlog = scrollwin.get_child()
         convlog.scroll_to_mark(self.conversations[convID][1].get_insert(),0)
-        if(self.notebook.get_current_page() != self.convID_to_page(convID)):
+        if(self.notebook.get_current_page() != page_id):
             self.hilight_conv(convID, "red")
         return
     
@@ -165,7 +165,7 @@ class Conversations:
         return
 
     def close_conversation(self, foo):
-        convID = page_to_convID(self.notebook.get_current_page())
+        convID = self.page_to_convID(self.notebook.get_current_page())
         conv = purple_pb2.Conversation()
         conv.conversationID = convID
         conv.accountID = 0
