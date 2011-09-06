@@ -130,6 +130,7 @@ class Conversations:
     def new_conversation(self, conv):
         vpaned = gtk.VPaned()
         label = gtk.Label(conv.name)
+        label.set_markup("<span foreground=\"red"\">"+conv.name+"</span>")
         label.show()
         convlog = gtk.TextView()
         convlog.set_wrap_mode(gtk.WRAP_WORD)
