@@ -55,14 +55,15 @@ class RPClient:
                     new_im = self.status.conversations[i].messages.add() # And add message to log
                     new_im.ParseFromString(payload)
                     convID = self.status.conversations[i].conversationID
-                    break
+                    return ("IM", convID, new_im) # Update type: IM, ID of updated conversation, the new line
                 else:
                     i = i+1
-            return ("IM", convID, new_im) # Update type: IM, ID of updated conversation, the new line
+            # Conversation not found. Either we've missed NewConversation for whatever reason or it comes later.
+            return ("Empty", None) # Return something meaningless
         
         if(rectype == "NewConversation"): # New conversation
-            conversation = purple_pb2.Conversation()
-            conversation.ParseFromString(payload)
+            conversation = self.status.conversations.add() 
+            conversation.ParseFromString(payload)           
             return ("NewConversation", conversation)
 
         if(rectype == "DeleteConversation"): # Deleting conversation
@@ -71,7 +72,6 @@ class RPClient:
             return ("DeleteConversation", conversation)
 
         if(rectype == "BuddyState"): # Buddy state has changed
-            print "Buddy Presence State Change received"
             presence = purple_pb2.Presence()
             presence.ParseFromString(payload)
             self.buddies[presence.buddyID] = presence
