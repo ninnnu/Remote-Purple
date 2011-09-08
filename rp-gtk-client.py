@@ -130,7 +130,7 @@ class Conversations:
     def new_conversation(self, conv):
         vpaned = gtk.VPaned()
         label = gtk.Label(conv.name)
-        label.set_markup("<span foreground=\"red"\">"+conv.name+"</span>")
+        label.set_markup("<span foreground=\"red\">"+conv.name+"</span>")
         label.show()
         convlog = gtk.TextView()
         convlog.set_wrap_mode(gtk.WRAP_WORD)
@@ -138,7 +138,7 @@ class Conversations:
         convlog.set_editable(False)
         imbuffer = convlog.get_buffer()
         for im in conv.messages:
-            while((im.message[0].find("<FONT") == 0) and (im.message[-1] == ">")):
+            while((im.message.find("<FONT") == 0) and (im.message[-1] == ">")):
                 im.message = im.message[im.message.find('>')+1:im.message.rfind('<')] # Strip <FONT>-crap
             timestamp = time.ctime(im.timestamp)
             line = "("+timestamp+") "+im.sender+": "+im.message+"\n"

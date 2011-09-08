@@ -13,7 +13,7 @@ import purple_pb2
 if(len(sys.argv) == 2):
     __password__ = sys.argv[1]
 else:
-    print "Usage: rp-server.py password"
+    print "[SERVER] Usage: rp-server.py password"
     exit(1)
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -23,8 +23,6 @@ purple = dbus.Interface(obj, "im.pidgin.purple.PurpleInterface")
 
 _STATUS = ("unknown", "offline", "available", "unavailable", "invisible", "away", "extended_away", "mobile", "tune")
 _ONLINE = ("offline", "online")
-
-blockdisplay = True
 
 def protosend(sock, tosend):
     # Send message in Remote Purple-protocol ("<payload length>;<payload>")
@@ -84,7 +82,7 @@ def _parse_command(command, ID):
     global convs
     rectype = command[:command.find(";")]
     payload = command[command.find(";")+1:]
-    print "Received: "+rectype
+    print "[SERVER] Received: "+rectype
     if(rectype == "IM"):
         im = purple_pb2.IM()
         im.ParseFromString(payload)
@@ -112,14 +110,14 @@ def _listen(ID):
         if received != "":
             if(clients[ID]['authenticated'] == False):
                 if(received.strip() == __password__):
-                    print "Authenticated"
+                    print "[SERVER] Authenticated"
                     clients[ID]['client'].sendall("Authdone") # Client waits for 8 character-string to determine authfail/success
                     status = build_status()
                     status = status.SerializeToString()
                     protosend(clients[ID]['client'], status)
                     clients[ID]['authenticated'] = True 
                 else:
-                    print "Authentication failed"
+                    print "[SERVER] Authentication failed"
                     clients[ID]['client'].sendall("Authfail")
                     clients[ID]['client'].close()
                     clients[ID]['client'] = None
@@ -151,12 +149,11 @@ def _accept_connection(ID):
     _listen(ID)
 
 def msg_received(account, sender, message, conv, flags):
-    if(conv == 0): # Unknown conversation, leave for DisplayedImMsg-signal-handler
-        blockdisplay = False
+    if(conv == 0): # Unknown conversation. Meh
         return
     global clients
     global convs
-    print "IM GET: "+sender+": "+message
+    print "[SERVER] IM GET: "+sender+": "+message
     
     IM = purple_pb2.IM()
     IM.conversation = conv
@@ -180,48 +177,11 @@ def msg_received(account, sender, message, conv, flags):
                 client['authenticated'] = False
     return
 
-def msg_displayed(account, sender, message, conv, flags): # Same as received, but it's usually blocked
-    global blockdisplay
-    if(blockdisplay == True):
-        return
-    blockdisplay = True
-    global clients
-    global convs
-    print "IM GET: "+sender+": "+message
-    
-    if conv in convs:
-       convs[conv]['messages'].append({"message": message, "sender": sender, "timestamp": int(time.time())})
-    else:
-       convs[conv] = {"messages": [{"message": message, "sender": sender, "timestamp": int(time.time())}],
-                      "name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv)}
-
-    conversation = purple_pb2.Conversation()
-    conversation.conversationID = conv
-    conversation.accountID = convs[conv]['account']
-    conversation.name = convs[conv]['name']
-    for msg in convs[conv]['messages']:
-        message = conversation.messages.add()
-        message.conversation = conv
-        message.sender = msg['sender']
-        message.message = msg['message']
-        message.timestamp = msg['timestamp']
-
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
-            try:
-                protosend(client['client'], "Conversation;"+conversation)
-            except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
-    return
-
-
 def im_sent(account, receiver, message):
     global clients
     global convs
-    print "IM SENT -> "+receiver+": "+message
-    sender = purple.PurpleAccountGetUsername(accountID)
+    print "[SERVER] IM SENT -> "+receiver+": "+message
+    sender = purple.PurpleAccountGetUsername(account)
     # Figure out conversationID
     conv = 0
     for convID in convs:
@@ -254,12 +214,30 @@ def im_sent(account, receiver, message):
 def new_conversation(conv):
     global convs
     global clients
+    global purple
     if conv not in convs:
         convs[conv] = {"name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv), "messages": []}
     conversation = purple_pb2.Conversation()
     conversation.conversationID = conv
     conversation.accountID = convs[conv]['account']
     conversation.name = convs[conv]['name']
+    
+    msghistory = purple.PurpleConversationGetMessageHistory(conv)
+    msghistory.reverse() # By default newest is first
+    msgs = list()
+    for msg in msghistory:
+        msg_text = purple.PurpleConversationMessageGetMessage(msg)
+        msg_timestamp = purple.PurpleConversationMessageGetTimestamp(msg)
+        msg_sender = purple.PurpleConversationMessageGetSender(msg)
+    	msgs.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp})
+    convs[conv]['messages'] = msgs
+
+    for msg in convs[conv]['messages']:
+        message = conversation.messages.add()
+        message.conversation = conv
+        message.sender = msg['sender']
+        message.message = msg['message']
+        message.timestamp = msg['timestamp']
 
     for client in clients:
         if((client['client'] != None) and (client['authenticated'] == True)):
@@ -339,9 +317,6 @@ def get_buddyID(screenname):
             return buddies_raw[0]
     return None
 
-bus.add_signal_receiver(msg_displayed,
-                        dbus_interface="im.pidgin.purple.PurpleInterface",
-                        signal_name="DisplayedImMsg")
 bus.add_signal_receiver(msg_received,
                         dbus_interface="im.pidgin.purple.PurpleInterface",
                         signal_name="ReceivedImMsg")
@@ -407,7 +382,7 @@ serversocket.bind(('127.0.0.1', 7890))
 serversocket.listen(5)
 clients.append({"thread": threading.Thread(target = _accept_connection, args=(0,)), "client": None, "authenticated": False, "recycled": False})
 clients[0]['thread'].start()
-print "Accepting connections"
+print "[SERVER] Accepting connections"
 
 loop = gobject.MainLoop()
 gobject.threads_init()
