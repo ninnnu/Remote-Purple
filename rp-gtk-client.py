@@ -303,7 +303,10 @@ def listen_loop():
             while((event[2].message.find("<FONT") == 0) and (event[2].message[-1] == ">")):
                 event[2].message = event[2].message[event[2].message.find('>')+1:event[2].message.rfind('<')] # Strip <FONT>-crap
             gobject.idle_add(conversations.new_line, event[1], event[2])
-            n = pynotify.Notification("New IM", event[2].sender+": "+event[2].message)
+            if(len(event[2].message) > 200):
+                n = pynotify.Notification("New IM", event[2].sender+": "+ event[2].message[0:197]+"...")
+            else:
+                n = pynotify.Notification("New IM", event[2].sender+": "+event[2].message)
             n.show() # TODO: Don't show if user just sent the shown IM.
             time.sleep(0.1)
         if(event[0] == "NewConversation"):
