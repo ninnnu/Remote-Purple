@@ -2,6 +2,7 @@
 
 import dbus, gobject
 from dbus.mainloop.glib import DBusGMainLoop
+from dbus.mainloop.glib import threads_init as dbus_threads_init
 
 import sys
 import time
@@ -16,6 +17,8 @@ else:
     print "[SERVER] Usage: rp-server.py password"
     exit(1)
 
+__DEBUG__ = True
+
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 bus = dbus.SessionBus()
 obj = bus.get_object("im.pidgin.purple.PurpleService", "/im/pidgin/purple/PurpleObject")
@@ -23,6 +26,61 @@ purple = dbus.Interface(obj, "im.pidgin.purple.PurpleInterface")
 
 _STATUS = ("unknown", "offline", "available", "unavailable", "invisible", "away", "extended_away", "mobile", "tune")
 _ONLINE = ("offline", "online")
+
+## Classes ##
+
+class Conversation:
+    def __init__(self, ID, name, account):
+        self.ID = ID
+        self.name = name
+        self.accountID = account
+        self.ImID = purple.PurpleConvIm(ID)
+        
+        self.messages = []
+        self._refresh_history()
+        return
+
+    def get_protobuf(self):
+        pb = purple_pb2.Conversation()
+        pb.conversationID = self.ID
+        pb.accountID = self.accountID
+        pb.name = self.name
+        for msg in self.messages:
+            message = pb.messages.add()
+            message.conversation = conv
+            message.sender = msg['sender']
+            message.message = msg['message']
+            message.timestamp = msg['timestamp']
+        return pb    
+        
+    def _refresh_history(self):
+        msghistory = purple.PurpleConversationGetMessageHistory(self.ID)
+        msghistory.reverse() # By default newest is first
+        for msg in msghistory:
+            msg_text = purple.PurpleConversationMessageGetMessage(msg)
+            msg_timestamp = purple.PurpleConversationMessageGetTimestamp(msg)
+            msg_sender = purple.PurpleConversationMessageGetSender(msg)
+            self.messages.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp})
+        return
+
+    def new_message(self, sender, message):
+        self.messages.append({"message": message, "sender": sender, "timestamp": int(time.time())})
+        return
+
+    def get_name(self):
+        return self.name
+
+    def get_accountID(self):
+        return self.accountID
+
+    def get_imID(self):
+        return self.ImID
+
+    def get_messages(self):
+        return self.messages
+    pass
+
+## Everything else ##
 
 def protosend(sock, tosend):
     # Send message in Remote Purple-protocol ("<payload length>;<payload>")
@@ -50,15 +108,7 @@ def build_status():
             buddy.extended_status = buddy_d['extstatus']
     for conv in convs:
         conversation = status.conversations.add()
-        conversation.conversationID = conv
-        conversation.accountID = convs[conv]['account']
-        conversation.name = convs[conv]['name']
-        for msg in convs[conv]['messages']:
-            message = conversation.messages.add()
-            message.conversation = conv
-            message.sender = msg['sender']
-            message.message = msg['message']
-            message.timestamp = msg['timestamp']
+        conversation.MergeFrom(convs[conv].get_protobuf())
     return status
 
 def _receive(sock):
@@ -76,32 +126,39 @@ def _receive(sock):
     print str(len(payload))+" / "+str(payload_len)
     return payload
 
-def _parse_command(command, ID):
+def _parse_command(command, clientID):
     global clients
     global accounts
     global convs
+    global purple
     rectype = command[:command.find(";")]
     payload = command[command.find(";")+1:]
     print "[SERVER] Received: "+rectype
     if(rectype == "IM"):
         im = purple_pb2.IM()
         im.ParseFromString(payload)
-        im_id = purple.PurpleConvIm(im.conversation)
+        if(__DEBUG__):
+            print im
+        im_id = convs[im.conversation].get_imID()
         purple.PurpleConvImSend(im_id, im.message)
     elif(rectype == "NewConversation"):
         conv = purple_pb2.Conversation()
         conv.ParseFromString(payload)
+        if(__DEBUG__):
+            print conv
         accID = conv.accountID
         name = accounts[accID]['buddies'][conv.conversationID]['name']
         purple.PurpleConversationNew(1, accID, name)
     elif(rectype == "DeleteConversation"):
         conv = purple_pb2.Conversation()
         conv.ParseFromString(payload)
+        if(__DEBUG__):
+            print conv
         convID = conv.conversationID
         purple.PurpleConversationDestroy(convID)
         # Deleting conversation happens in conv-deletion-signal handler
     else:
-        clients[ID]['client'].send("Unknown command")
+        clients[clientID]['client'].send("Unknown command")
 
 def _listen(ID):
     global clients
@@ -163,10 +220,10 @@ def msg_received(account, sender, message, conv, flags):
     IM_ser = IM.SerializeToString()
     
     if conv in convs:
-       convs[conv]['messages'].append({"message": message, "sender": sender, "timestamp": int(time.time())})
+       convs[conv].new_message(sender, message)
     else:
-       convs[conv] = {"messages": [{"message": message, "sender": sender, "timestamp": int(time.time())}],
-                      "name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv)}
+       convs[conv] = Conversation(conv, name, account)
+       convs[conv].new_message(sender, message)
     for client in clients:
         if((client['client'] != None) and (client['authenticated'] == True)):
             try:
@@ -185,7 +242,7 @@ def im_sent(account, receiver, message):
     # Figure out conversationID
     conv = 0
     for convID in convs:
-        if convs[convID]['name'] == receiver:
+        if convs[convID].get_name() == receiver:
             conv = convID
             break
   
@@ -197,10 +254,10 @@ def im_sent(account, receiver, message):
     IM_ser = IM.SerializeToString()
     
     if conv in convs:
-       convs[conv]['messages'].append({"message": message, "sender": sender, "timestamp": int(time.time())})
+       convs[conv].new_message(sender, message)
     else:
-       convs[conv] = {"messages": [{"message": message, "sender": sender, "timestamp": int(time.time())}],
-                      "name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv)}
+       convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
+       convs[conv].new_message(sender, message)
     for client in clients:
         if((client['client'] != None) and (client['authenticated'] == True)):
             try:
@@ -216,29 +273,9 @@ def new_conversation(conv):
     global clients
     global purple
     if conv not in convs:
-        convs[conv] = {"name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv), "messages": []}
-    conversation = purple_pb2.Conversation()
-    conversation.conversationID = conv
-    conversation.accountID = convs[conv]['account']
-    conversation.name = convs[conv]['name']
+        convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
+    conversation = convs[conv].get_protobuf()
     
-    msghistory = purple.PurpleConversationGetMessageHistory(conv)
-    msghistory.reverse() # By default newest is first
-    msgs = list()
-    for msg in msghistory:
-        msg_text = purple.PurpleConversationMessageGetMessage(msg)
-        msg_timestamp = purple.PurpleConversationMessageGetTimestamp(msg)
-        msg_sender = purple.PurpleConversationMessageGetSender(msg)
-    	msgs.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp})
-    convs[conv]['messages'] = msgs
-
-    for msg in convs[conv]['messages']:
-        message = conversation.messages.add()
-        message.conversation = conv
-        message.sender = msg['sender']
-        message.message = msg['message']
-        message.timestamp = msg['timestamp']
-
     for client in clients:
         if((client['client'] != None) and (client['authenticated'] == True)):
             try:
@@ -254,8 +291,8 @@ def delete_conversation(conv):
     global clients
     conversation = purple_pb2.Conversation()
     conversation.conversationID = conv
-    conversation.accountID = convs[conv]['account']
-    conversation.name = convs[conv]['name']
+    conversation.accountID = convs[conv].get_accountID()
+    conversation.name = convs[conv].get_name()
     del convs[conv] # Remove conversation
     for client in clients:
         if((client['client'] != None) and (client['authenticated'] == True)):
@@ -347,15 +384,7 @@ bus.add_signal_receiver(buddy_signed_off,
 convs_raw = purple.PurpleGetIms()
 convs = dict()
 for conv in convs_raw:
-    msghistory = purple.PurpleConversationGetMessageHistory(conv)
-    msghistory.reverse() # By default newest is first
-    msgs = list()
-    for msg in msghistory:
-        msg_text = purple.PurpleConversationMessageGetMessage(msg)
-        msg_timestamp = purple.PurpleConversationMessageGetTimestamp(msg)
-        msg_sender = purple.PurpleConversationMessageGetSender(msg)
-    	msgs.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp})
-    convs[conv] = {"name": purple.PurpleConversationGetName(conv), "account": purple.PurpleConversationGetAccount(conv), "messages": msgs}
+    convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
 
 accounts_raw = purple.PurpleAccountsGetAllActive()
 accounts = dict()
@@ -378,7 +407,7 @@ for accountID in accounts_raw:
 
 clients = list()
 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-serversocket.bind(('127.0.0.1', 7890))
+serversocket.bind(('0.0.0.0', 7890))
 serversocket.listen(5)
 clients.append({"thread": threading.Thread(target = _accept_connection, args=(0,)), "client": None, "authenticated": False, "recycled": False})
 clients[0]['thread'].start()
@@ -386,4 +415,5 @@ print "[SERVER] Accepting connections"
 
 loop = gobject.MainLoop()
 gobject.threads_init()
+dbus_threads_init()
 loop.run()
