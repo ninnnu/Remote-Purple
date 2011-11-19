@@ -40,7 +40,7 @@ class Conversations:
             end_iter = self.conversations[convID][2].get_end_iter()
             im = purple_pb2.IM()
             im.conversation = convID
-            im.message = self.conversations[convID][2].get_text(beg_iter, end_iter)
+            im.message = unicode(self.conversations[convID][2].get_text(beg_iter, end_iter))
             if(len(im.message) > 0):
                 print str(convID)+" - Sending:"
                 print im.message
