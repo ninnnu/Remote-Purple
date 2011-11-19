@@ -47,7 +47,7 @@ class Conversation:
         pb.name = self.name
         for msg in self.messages:
             message = pb.messages.add()
-            message.conversation = conv
+            message.conversation = self.ID
             message.sender = msg['sender']
             message.message = msg['message']
             message.timestamp = msg['timestamp']
@@ -237,7 +237,8 @@ def msg_received(account, sender, message, conv, flags):
 def im_sent(account, receiver, message):
     global clients
     global convs
-    print "[SERVER] IM SENT -> "+receiver+": "+message
+    if(__DEBUG__):
+        print "[SERVER] IM SENT -> "+receiver+": "+message
     sender = purple.PurpleAccountGetUsername(account)
     # Figure out conversationID
     conv = 0
