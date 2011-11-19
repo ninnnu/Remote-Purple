@@ -59,20 +59,12 @@ class RPClient:
                     return ("IM", convID, new_im) # Update type: IM, ID of updated conversation, the new line
                 else:
                     i = i+1
-            self.orphans.append(temp)
-            print "[RPClient] Orphanising: "+temp.message
             # Conversation not found. Either we've missed NewConversation for whatever reason or it comes later.
             return ("Empty", None) # Return something meaningless
         
         if(rectype == "NewConversation"): # New conversation
             conversation = self.status.conversations.add() 
             conversation.ParseFromString(payload)
-            for orphanIM in self.orphans:
-                if orphanIM.conversationID == conversation.conversationID:
-                    newIM = conversation.messages.add()
-                    newIM.MergeFrom(orphanIM)
-                    print "[RPClient] Unorphanising: "+orphanIM.message
-                    self.orphans.remove(orphanIM)
             return ("NewConversation", conversation)
 
         if(rectype == "DeleteConversation"): # Deleting conversation
