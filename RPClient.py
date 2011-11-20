@@ -10,6 +10,7 @@ class RPClient:
         self.orphans = list() # Orphan received messages. I.e received messages although there's no conversation.
         self.status = purple_pb2.Status()
         self.s = socket.socket()
+        self.s.settimeout(3*60) # 3 minutes
         try:
             self.s.connect((host, port))
         except:
@@ -32,7 +33,14 @@ class RPClient:
 
     def _receive(self):
         # Protocol: <payload length>;<payload>
-        buf = self.s.recv(10)
+        try:
+            buf = self.s.recv(10)
+        except socket.timeout:
+            if(self.protosend("Ping")):
+                return self._receive()
+            else:
+                print "[RPClient] Connection to server lost"
+                return None
         payload_len = int(buf[:buf.find(";")])
         payload = buf[buf.find(";")+1:]
         while(len(payload) < payload_len):
@@ -43,8 +51,15 @@ class RPClient:
     def listen_update(self):
         # TODO: How to signal changes to UI?
         received = self._receive() # Beef = <Payload type>;<Payload>
-        rectype = received[:received.find(";")]
-        payload = received[received.find(";")+1:]
+        if(received == None):
+            return None
+        if(received.find(";") == -1):
+            rectype = received
+            payload = None
+        else:
+            rectype = received[:received.find(";")]
+            payload = received[received.find(";")+1:]
+
         print rectype
         if(rectype == "IM"):
             temp = purple_pb2.IM()
@@ -78,6 +93,8 @@ class RPClient:
             self.buddies[presence.buddyID] = presence
             return ("BuddyState", presence)
         
+        if(rectype == "Pong"): # Connection is still up.
+            return ("Empty", None) # UI doesn't have to really know what's going on
 
     def get_accounts(self):
         return self.status.accounts
@@ -91,10 +108,15 @@ class RPClient:
     def protosend(self, payload, payload_type=None):
         # Send message in Remote Purple-protocol ("<payload length>;<payload>")
         if(payload_type == None):
-            tosend = tosend = str(len(payload))+";"+payload
+            tosend = str(len(payload))+";"+payload
         else:
             payload = payload.SerializeToString()
             tosend = payload_type+";"+payload
             tosend = str(len(tosend))+";"+tosend
-        self.s.sendall(tosend)
+        try:
+            self.s.sendall(tosend)
+        except:
+            self.s = None
+            return False
+        return True
 

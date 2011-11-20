@@ -131,8 +131,14 @@ def _parse_command(command, clientID):
     global accounts
     global convs
     global purple
-    rectype = command[:command.find(";")]
-    payload = command[command.find(";")+1:]
+
+    if(command.find(";") == -1):
+        rectype = command
+        payload = None
+    else:
+        rectype = command[:command.find(";")]
+        payload = command[command.find(";")+1:]
+
     print "[SERVER] Received: "+rectype
     if(rectype == "IM"):
         im = purple_pb2.IM()
@@ -157,8 +163,10 @@ def _parse_command(command, clientID):
         convID = conv.conversationID
         purple.PurpleConversationDestroy(convID)
         # Deleting conversation happens in conv-deletion-signal handler
+    elif(rectype == "Ping"):
+        protosend(clients[clientID]['client'], "Pong")
     else:
-        clients[clientID]['client'].send("Unknown command")
+        protosend(clients[clientID]['client'], "Unknown command")
 
 def _listen(ID):
     global clients
@@ -252,6 +260,7 @@ def im_sent(account, receiver, message):
     IM.sender = sender
     IM.message = message
     IM.timestamp = int(time.time())
+    IM.sent = True
     IM_ser = IM.SerializeToString()
     
     if conv in convs:

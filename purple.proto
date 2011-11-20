@@ -3,6 +3,7 @@ message IM {
     optional string sender = 2;
     required string message = 3;
     optional int32 timestamp = 4;
+    optional bool sent = 5 [default = false];
 }
 
 message Conversation {

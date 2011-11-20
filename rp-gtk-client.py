@@ -299,10 +299,16 @@ def listen_loop():
     global blist, conversations
     while True:
         event = rp.listen_update()
+        if(event == None):
+            # TODO: Show "Connection lost"-popup?
+            return
         if(event[0] == "IM"):
             while((event[2].message.find("<FONT") == 0) and (event[2].message[-1] == ">")):
                 event[2].message = event[2].message[event[2].message.find('>')+1:event[2].message.rfind('<')] # Strip <FONT>-crap
             gobject.idle_add(conversations.new_line, event[1], event[2])
+            if(event[2].sent == True): # Don't show notification about sent IMs
+                time.sleep(0.1)
+                continue
             if(len(event[2].message) > 200):
                 n = pynotify.Notification("New IM", event[2].sender+": "+ event[2].message[0:197]+"...")
             else:
