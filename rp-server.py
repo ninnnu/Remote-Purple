@@ -78,14 +78,64 @@ class Conversation:
 
     def get_messages(self):
         return self.messages
-    pass
+
+
+class Client:
+    def __init__(self, ID, sock=None, addr=None):
+        self.ID = ID
+        if(sock == None):
+            (self.socket, self.addr) = serversocket.accept()
+        else:
+            self.socket = sock
+            self.addr = addr
+        print str(self.ID)+": New client: "+str(self.addr[0])+":"+str(self.addr[1])
+        self.authenticated = False
+
+    def send(self, tosend):
+        tosend = str(len(tosend))+";"+tosend
+        self.socket.sendall(tosend)
+
+    def _receive(self):
+        # Protocol: <payload length>;<payload>
+        buf = self.socket.recv(10)
+        try:
+            payload_len = int(buf[:buf.find(";")])
+        except:
+            return ""
+        payload = buf[buf.find(";")+1:]
+        while(len(payload) < payload_len):
+            print str(len(payload))+" / "+str(payload_len)
+            buf = self.socket.recv(payload_len - len(payload)) # We've already received a part of the payload. Try to figure out how much
+            payload = payload+buf
+        print str(len(payload))+" / "+str(payload_len)
+        return payload
+
+    def authenticate(self):
+        global __password__
+        received = self._receive()
+        if(received == __password__):
+            self.authenticated = True
+            self.send("Authdone")
+            status = build_status()
+            self.send(status.SerializeToString())
+            
+        else:
+            self.disconnect()
+
+    def disconnect(self):
+        try:
+            self.send("Bye")
+        except:
+            pass
+        self.socket = None
+        self.addr = None
+
+    def listen(self):
+        while(self.socket != None):
+            received = self._receive()
+            parse_command(received, self.ID)
 
 ## Everything else ##
-
-def protosend(sock, tosend):
-    # Send message in Remote Purple-protocol ("<payload length>;<payload>")
-    tosend = str(len(tosend))+";"+tosend
-    sock.sendall(tosend)
 
 def build_status():
     global accounts # Accounts contain everything else except convs.
@@ -111,22 +161,7 @@ def build_status():
         conversation.MergeFrom(convs[conv].get_protobuf())
     return status
 
-def _receive(sock):
-    # Protocol: <payload length>;<payload>
-    buf = sock.recv(10)
-    try:
-        payload_len = int(buf[:buf.find(";")])
-    except:
-        return ""
-    payload = buf[buf.find(";")+1:]
-    while(len(payload) < payload_len):
-        print str(len(payload))+" / "+str(payload_len)
-        buf = sock.recv(payload_len - len(payload)) # We've already received a part of the payload. Try to figure out how much
-        payload = payload+buf
-    print str(len(payload))+" / "+str(payload_len)
-    return payload
-
-def _parse_command(command, clientID):
+def parse_command(command, clientID):
     global clients
     global accounts
     global convs
@@ -164,54 +199,20 @@ def _parse_command(command, clientID):
         purple.PurpleConversationDestroy(convID)
         # Deleting conversation happens in conv-deletion-signal handler
     elif(rectype == "Ping"):
-        protosend(clients[clientID]['client'], "Pong")
+        clients[clientID].send("Pong")
     else:
-        protosend(clients[clientID]['client'], "Unknown command")
-
-def _listen(ID):
-    global clients
-    while True:
-        received = _receive(clients[ID]['client'])
-        if received != "":
-            if(clients[ID]['authenticated'] == False):
-                if(received.strip() == __password__):
-                    print "[SERVER] Authenticated"
-                    clients[ID]['client'].sendall("Authdone") # Client waits for 8 character-string to determine authfail/success
-                    status = build_status()
-                    status = status.SerializeToString()
-                    protosend(clients[ID]['client'], status)
-                    clients[ID]['authenticated'] = True 
-                else:
-                    print "[SERVER] Authentication failed"
-                    clients[ID]['client'].sendall("Authfail")
-                    clients[ID]['client'].close()
-                    clients[ID]['client'] = None
-                    clients[ID]['address'] = None
-                    clients[ID]['authenticated'] = False
-                    clients[ID]['recycled'] = True
-                    break
-            
-            else:
-                _parse_command(received, ID)
-        else:
-            print str(ID)+": Remote host has closed connection"
-            clients[ID]['client'].close()
-            clients[ID]['client'] = None
-            clients[ID]['address'] = None
-            clients[ID]['authenticated'] = False
-            clients[ID]['recycled'] = True
-            break
-    if(clients[ID]['client'] == None):
-        _accept_connection(ID)
+        clients[clientID].send("Unknown command")
 
 def _accept_connection(ID):
     global clients
-    (clients[ID]['client'], clients[ID]['address']) = serversocket.accept()
-    print str(ID)+": New client: "+str(clients[ID]['address'][0])+":"+str(clients[ID]['address'][1])
-    if(clients[ID]['recycled'] == False):
-        clients.append({"thread": threading.Thread(target = _accept_connection, args=(ID+1,)), "client": None, "authenticated": False, "recycled": False})
-        clients[-1]['thread'].start()
-    _listen(ID)
+    global client_threads
+    clients[ID] = Client(ID)
+
+    client_threads.append(threading.Thread(target = _accept_connection, args=(ID+1,)))
+    client_threads[-1].start()
+
+    clients[ID].authenticate()
+    clients[ID].listen()
 
 def msg_received(account, sender, message, conv, flags):
     if(conv == 0): # Unknown conversation. Meh
@@ -232,14 +233,13 @@ def msg_received(account, sender, message, conv, flags):
     else:
        convs[conv] = Conversation(conv, name, account)
        convs[conv].new_message(sender, message)
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
+    for clientID in clients:
+        client = clients[clientID]
+        if((client != None) and (client.authenticated == True)):
             try:
-                protosend(client['client'], "IM;"+IM_ser)
+                client.send("IM;"+IM_ser)
             except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
+                client.disconnect()
     return
 
 def im_sent(account, receiver, message):
@@ -268,14 +268,13 @@ def im_sent(account, receiver, message):
     else:
        convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
        convs[conv].new_message(sender, message)
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
+    for clientID in clients:
+        client = clients[clientID]
+        if((client != None) and (client.authenticated == True)):
             try:
-                protosend(client['client'], "IM;"+IM_ser)
+                client.send("IM;"+IM_ser)
             except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
+                client.disconnect()
     return
 
 def new_conversation(conv):
@@ -286,14 +285,13 @@ def new_conversation(conv):
         convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
     conversation = convs[conv].get_protobuf()
     
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
+    for clientID in clients:
+        client = clients[clientID]
+        if((client != None) and (client.authenticated == True)):
             try:
-                protosend(client['client'], "NewConversation;"+conversation.SerializeToString())
+                client.send("NewConversation;"+conversation.SerializeToString())
             except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
+                client.disconnect()
     return
 
 def delete_conversation(conv):
@@ -304,14 +302,14 @@ def delete_conversation(conv):
     conversation.accountID = convs[conv].get_accountID()
     conversation.name = convs[conv].get_name()
     del convs[conv] # Remove conversation
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
+    for clientID in clients:
+        client = clients[clientID]
+
+        if((client != None) and (client.authenticated == True)):
             try:
-                protosend(client['client'], "DeleteConversation;"+conversation.SerializeToString())
+                client.send("DeleteConversation;"+conversation.SerializeToString())
             except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
+                client.disconnect()
     return
 
 
@@ -326,15 +324,14 @@ def buddy_signed_on(buddyID):
     presence.buddyID = buddyID 
     presence.state = "online"
     
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
+    for clientID in clients:
+        client = clients[clientID]
+
+        if((client != None) and (client.authenticated == True)):
             try:
-                protosend(client['client'], "BuddyState;"+presence.SerializeToString())
+                client.send("BuddyState;"+presence.SerializeToString())
             except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
-    
+                client.disconnect()    
     return
 
 def buddy_signed_off(buddyID):
@@ -345,15 +342,14 @@ def buddy_signed_off(buddyID):
     presence.buddyID = buddyID 
     presence.state = "offline"
     
-    for client in clients:
-        if((client['client'] != None) and (client['authenticated'] == True)):
-            try:
-                protosend(client['client'], "BuddyState;"+presence.SerializeToString())
-            except:
-                client['client'] = None
-                client['address'] = None
-                client['authenticated'] = False
+    for clientID in clients:
+        client = clients[clientID]
 
+        if((client != None) and (client.authenticated == True)):
+            try:
+                client.send("BuddyState;"+presence.SerializeToString())
+            except:
+                client.disconnect()
     return
 
 
@@ -415,12 +411,13 @@ for accountID in accounts_raw:
         account['buddies'][buddyID] = buddy
     accounts[accountID] = account
 
-clients = list()
+clients = dict()
+client_threads = list()
 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 serversocket.bind(('0.0.0.0', 7890))
 serversocket.listen(5)
-clients.append({"thread": threading.Thread(target = _accept_connection, args=(0,)), "client": None, "authenticated": False, "recycled": False})
-clients[0]['thread'].start()
+client_threads.append(threading.Thread(target = _accept_connection, args=(0,)))
+client_threads[0].start()
 print "[SERVER] Accepting connections"
 
 loop = gobject.MainLoop()

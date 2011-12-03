@@ -16,8 +16,8 @@ class RPClient:
         except:
             raise socket.error("Connection failed")
         self.protosend(password)
-        response = self.s.recv(8)
-        if(response == "Authfail"):
+        response = self._receive()
+        if(response != "Authdone"):
             print "[RPClient] Authentication failed"
             self.s.close()
             self.s = None
