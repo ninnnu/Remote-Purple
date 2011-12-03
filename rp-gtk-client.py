@@ -202,9 +202,7 @@ class Conversations:
 class BuddyList:
     # close the window and quit
     def delete_event(self, widget, event, data=None):
-        gtk.main_quit()
-        global listen_thread
-        listen_thread.quit = True
+        rp.protosend("Bye")
         return False
 
     def __init__(self):
@@ -321,6 +319,10 @@ def listen_loop():
             conversations.delete_conversation(event[1].conversationID)
         if(event[0] == "BuddyState"):
             blist.update_buddy(event[1].buddyID, event[1].state)
+        if(event[0] == "Disconnected"):
+            print "Disconnected"
+            gtk.main_quit()
+            break
 
 # If the program is run directly or passed as an argument to the python
 # interpreter then create a HelloWorld instance and show it

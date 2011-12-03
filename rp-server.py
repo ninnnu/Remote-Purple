@@ -200,6 +200,8 @@ def parse_command(command, clientID):
         # Deleting conversation happens in conv-deletion-signal handler
     elif(rectype == "Ping"):
         clients[clientID].send("Pong")
+    elif(rectype == "Bye"):
+        clients[clientID].disconnect()
     else:
         clients[clientID].send("Unknown command")
 

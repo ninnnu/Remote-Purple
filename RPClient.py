@@ -95,6 +95,10 @@ class RPClient:
         
         if(rectype == "Pong"): # Connection is still up.
             return ("Empty", None) # UI doesn't have to really know what's going on
+    
+        if(rectype == "Bye"):
+            self.s = None
+            return ("Disconnected", None)
 
     def get_accounts(self):
         return self.status.accounts
