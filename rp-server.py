@@ -215,6 +215,9 @@ def _accept_connection(ID):
 
     clients[ID].authenticate()
     clients[ID].listen()
+    # If we return from .listen(), the socket has gone away. Delete client-class
+    clients[ID] = None
+    del clients[ID]
 
 def msg_received(account, sender, message, conv, flags):
     if(conv == 0): # Unknown conversation. Meh
