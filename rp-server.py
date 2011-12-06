@@ -27,6 +27,8 @@ purple = dbus.Interface(obj, "im.pidgin.purple.PurpleInterface")
 _STATUS = ("unknown", "offline", "available", "unavailable", "invisible", "away", "extended_away", "mobile", "tune")
 _ONLINE = ("offline", "online")
 
+connected_clients = 0
+
 ## Classes ##
 
 class Conversation:
@@ -112,23 +114,30 @@ class Client:
 
     def authenticate(self):
         global __password__
+        global connected_clients
         received = self._receive()
         if(received == __password__):
             self.authenticated = True
             self.send("Authdone")
             status = build_status()
             self.send(status.SerializeToString())
-            
+            connected_clients += 1
+            update_status()
         else:
             self.disconnect()
 
     def disconnect(self):
+        global connected_clients
         try:
             self.send("Bye")
         except:
             pass
         self.socket = None
         self.addr = None
+        if(self.authenticated == True):
+            connected_clients -= 1
+            self.authenticated = False
+            update_status()
 
     def listen(self):
         while(self.socket != None):
@@ -160,6 +169,13 @@ def build_status():
         conversation = status.conversations.add()
         conversation.MergeFrom(convs[conv].get_protobuf())
     return status
+
+def update_status():
+    global connected_clients
+    if(connected_clients > 0):
+        set_status("available")
+    else:
+        set_status("away")
 
 def parse_command(command, clientID):
     global clients
@@ -364,6 +380,29 @@ def get_buddyID(screenname):
         if(buddies_raw.length >0):
             return buddies_raw[0]
     return None
+
+def set_message(message):
+    # Get current status type (Available/Away/etc.)
+    current = purple.PurpleSavedstatusGetType(purple.PurpleSavedstatusGetCurrent())
+    # Create new transient status and activate it
+    status = purple.PurpleSavedstatusNew("", current)
+    purple.PurpleSavedstatusSetMessage(status, message)
+    purple.PurpleSavedstatusActivate(status)
+    for accID in accounts:
+        accounts['statusmsg'] = message
+
+def set_status(new_status):
+    global accounts
+    AVAILABLE_STATUS = {'offline': 1, 'available': 2, 'away': 5}
+    statusid = AVAILABLE_STATUS[new_status]
+    # Get current message (Available/Away/etc.)
+    current = purple.PurpleSavedstatusGetMessage(purple.PurpleSavedstatusGetCurrent())
+    # Create new transient status and activate it
+    status = purple.PurpleSavedstatusNew("", statusid)
+    purple.PurpleSavedstatusSetMessage(status, current)
+    purple.PurpleSavedstatusActivate(status)
+    for accID in accounts:
+        accounts[accID]['status'] = new_status
 
 bus.add_signal_receiver(msg_received,
                         dbus_interface="im.pidgin.purple.PurpleInterface",
