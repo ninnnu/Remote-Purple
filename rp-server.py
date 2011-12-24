@@ -165,6 +165,7 @@ def build_status():
             buddy.alias = buddy_d['alias']
             buddy.state = _ONLINE[buddy_d['online']] # Only offline/online for now
             buddy.extended_status = buddy_d['extstatus']
+            buddy.name = buddy_d['name']
     for conv in convs:
         conversation = status.conversations.add()
         conversation.MergeFrom(convs[conv].get_protobuf())
@@ -344,6 +345,7 @@ def buddy_signed_on(buddyID):
     presence = purple_pb2.Presence()
     presence.buddyID = buddyID 
     presence.state = "online"
+    presence.name = purple.PurpleBuddyGetName(buddyID)
     
     for clientID in clients:
         client = clients[clientID]
@@ -362,6 +364,7 @@ def buddy_signed_off(buddyID):
     presence = purple_pb2.Presence()
     presence.buddyID = buddyID 
     presence.state = "offline"
+    presence.name = purple.PurpleBuddyGetName(buddyID)
     
     for clientID in clients:
         client = clients[clientID]
