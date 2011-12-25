@@ -74,7 +74,12 @@ class Conversations:
 
         for conv in rp.get_conversations():
             vpaned = gtk.VPaned()
-            label = gtk.Label(conv.name)
+            newname = rp.buddy_name2alias(conv.name)
+            if(newname == None):
+                label = gtk.Label(conv.name)
+            else:
+                label = gtk.Label(newname)
+                conv.name = newname
             label.show()
             convlog = gtk.TextView()
             convlog.set_wrap_mode(gtk.WRAP_WORD)
@@ -129,7 +134,12 @@ class Conversations:
     
     def new_conversation(self, conv):
         vpaned = gtk.VPaned()
-        label = gtk.Label(conv.name)
+        newname = rp.buddy_name2alias(conv.name)
+        if(newname == None):
+            label = gtk.Label(conv.name)
+        else:
+            label = gtk.Label(newname)
+            conv.name = newname
         label.set_markup("<span foreground=\"red\">"+conv.name+"</span>")
         label.show()
         convlog = gtk.TextView()

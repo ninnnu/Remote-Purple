@@ -455,6 +455,8 @@ for accountID in accounts_raw:
                  "name": purple.PurpleBuddyGetName(buddyID), 
                  "online": purple.PurpleBuddyIsOnline(buddyID),
                  "extstatus":  purple.PurpleStatusGetAttrString(purple.PurplePresenceGetActiveStatus(purple.PurpleBuddyGetPresence(buddyID)), "message")}
+        if(buddy['alias'] == ""): # No user-friendly name available
+            buddy['alias'] = buddy['name']
         account['buddies'][buddyID] = buddy
     accounts[accountID] = account
 

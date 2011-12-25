@@ -106,8 +106,16 @@ class RPClient:
     def get_conversations(self):
         return self.status.conversations
 
-    def get_buddyname(self, buddyid):
+    def get_buddyalias(self, buddyid):
         return self.buddies[buddyid].alias
+
+    def get_buddyname(self, buddyid):
+        return self.buddies[buddyid].name
+
+    def buddy_name2alias(self, name):
+        for buddyID in self.buddies:
+            if(self.buddies[buddyID].name == name):
+                return self.buddies[buddyID].alias
 
     def protosend(self, payload, payload_type=None):
         # Send message in Remote Purple-protocol ("<payload length>;<payload>")
