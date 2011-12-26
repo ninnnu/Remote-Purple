@@ -127,7 +127,7 @@ class Conversations:
         vpaned = self.notebook.get_nth_page(page_id)
         scrollwin = vpaned.get_child1()
         convlog = scrollwin.get_child()
-        convlog.scroll_to_mark(self.conversations[convID][1].get_insert(),0)
+        convlog.scroll_to_iter(self.conversations[convID][1].get_end_iter(),0)
         if(self.notebook.get_current_page() != page_id):
             self.hilight_conv(convID, "red")
         return
@@ -311,6 +311,7 @@ def listen_loop():
             # TODO: Show "Connection lost"-popup?
             return
         if(event[0] == "IM"):
+            # Event[0] = Type, [1] = ID, [2] = New line
             while((event[2].message.find("<FONT") == 0) and (event[2].message[-1] == ">")):
                 event[2].message = event[2].message[event[2].message.find('>')+1:event[2].message.rfind('<')] # Strip <FONT>-crap
             gobject.idle_add(conversations.new_line, event[1], event[2])
