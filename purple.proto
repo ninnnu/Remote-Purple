@@ -21,6 +21,7 @@ message Presence {
     required string state = 3;
     optional string extended_status = 4;
     optional string name = 5;
+    optional int32 accountID = 6;
 }
 
 message Account {

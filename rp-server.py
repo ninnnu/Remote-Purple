@@ -346,6 +346,7 @@ def buddy_signed_on(buddyID):
     presence.buddyID = buddyID 
     presence.state = "online"
     presence.name = purple.PurpleBuddyGetName(buddyID)
+    presence.accountID = accountID
     
     for clientID in clients:
         client = clients[clientID]
@@ -365,7 +366,8 @@ def buddy_signed_off(buddyID):
     presence.buddyID = buddyID 
     presence.state = "offline"
     presence.name = purple.PurpleBuddyGetName(buddyID)
-    
+    presence.accountID = accountID    
+
     for clientID in clients:
         client = clients[clientID]
 
@@ -455,7 +457,7 @@ for accountID in accounts_raw:
                  "name": purple.PurpleBuddyGetName(buddyID), 
                  "online": purple.PurpleBuddyIsOnline(buddyID),
                  "extstatus":  purple.PurpleStatusGetAttrString(purple.PurplePresenceGetActiveStatus(purple.PurpleBuddyGetPresence(buddyID)), "message")}
-        if(buddy['alias'] == ""): # No user-friendly name available
+        if(len(buddy['alias']) < 1): # No user-friendly name available
             buddy['alias'] = buddy['name']
         account['buddies'][buddyID] = buddy
     accounts[accountID] = account
