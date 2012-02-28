@@ -22,13 +22,13 @@ port = 7890
 
 _COLORS = {u"online": "#55FF55", u"away": "#FFFF00", u"offline": "#FF5555"}
 
-try:
-    rp = RPClient.RPClient(host, port, password)
-except:
-    print "Connecting to server failed"
-    exit(1)
+#try:
+rp = RPClient.RPClient(host, port, password)
+#except:
+#    print "Connecting to server failed"
+#    exit(1)
 
-class Conversations:
+class ConvWindow:
     def key_event(self, widget, event, convID):
         keyname = gtk.gdk.keyval_name(event.keyval)
         if(keyname == "Return"):
@@ -72,7 +72,8 @@ class Conversations:
         self.close.show()
         self.toolbar.show()
 
-        for conv in rp.get_conversations():
+        for convID in rp.get_conversations():
+            conv = rp.get_conversations()[convID]
             vpaned = gtk.VPaned()
             newname = rp.buddy_name2alias(conv.name)
             if(newname == None):
@@ -86,7 +87,7 @@ class Conversations:
             convlog.set_cursor_visible(False)
             convlog.set_editable(False)
             imbuffer = convlog.get_buffer()
-            for im in conv.messages:
+            for im in conv.messages:                
                 while((im.message.find("<FONT") == 0) and (im.message[-1] == ">")):
                     im.message = im.message[im.message.find('>')+1:im.message.rfind('<')] # Strip <FONT>-crap
                 timestamp = time.ctime(im.timestamp)
@@ -101,9 +102,9 @@ class Conversations:
             scrollwin.show()
             textentry = gtk.TextView()
             textentry.set_wrap_mode(gtk.WRAP_WORD)
-            textentry.connect("key_press_event", self.key_event, conv.conversationID)
+            textentry.connect("key_press_event", self.key_event, conv.get_convID())
             textentry.show()
-            self.conversations[conv.conversationID] = [conv, convlog.get_buffer(), textentry.get_buffer()]
+            self.conversations[conv.convID] = [conv, convlog.get_buffer(), textentry.get_buffer()]
             vpaned.add1(scrollwin)
             vpaned.add2(textentry)
             vpaned.set_position(300)
@@ -209,7 +210,7 @@ class Conversations:
         self.hilight_conv(self.page_to_convID(page_num), "black")
         return
 
-class BuddyList:
+class BuddyWindow:
     # close the window and quit
     def delete_event(self, widget, event, data=None):
         rp.protosend("Bye")
@@ -227,7 +228,7 @@ class BuddyList:
         self.window.connect("delete_event", self.delete_event)
 
         # create a TreeStore with one string column to use as the model
-                                    # Text  BG  Weight
+                                    # Text  BG  Weight buddyID
         self.treestore = gtk.TreeStore(str, str, int, int)
 
         # we'll add some data now
@@ -304,7 +305,7 @@ class BuddyList:
         return
 
 def listen_loop():
-    global blist, conversations
+    global buddywin, convwin
     while True:
         event = rp.listen_update()
         if(event == None):
@@ -314,7 +315,7 @@ def listen_loop():
             # Event[0] = Type, [1] = ID, [2] = New line
             while((event[2].message.find("<FONT") == 0) and (event[2].message[-1] == ">")):
                 event[2].message = event[2].message[event[2].message.find('>')+1:event[2].message.rfind('<')] # Strip <FONT>-crap
-            gobject.idle_add(conversations.new_line, event[1], event[2])
+            gobject.idle_add(convwin.new_line, event[1], event[2])
             if(event[2].sent == True): # Don't show notification about sent IMs
                 time.sleep(0.1)
                 continue
@@ -322,14 +323,14 @@ def listen_loop():
                 n = pynotify.Notification("New IM", event[2].sender+": "+ event[2].message[0:197]+"...")
             else:
                 n = pynotify.Notification("New IM", event[2].sender+": "+event[2].message)
-            n.show() # TODO: Don't show if user just sent the shown IM.
+            n.show()
             time.sleep(0.1)
         if(event[0] == "NewConversation"):
-            conversations.new_conversation(event[1])
+            convwin.new_conversation(event[1])
         if(event[0] == "DeleteConversation"):
-            conversations.delete_conversation(event[1].conversationID)
+            convwin.delete_conversation(event[1].conversationID)
         if(event[0] == "BuddyState"):
-            blist.update_buddy(event[1].buddyID, event[1].state)
+            buddywin.update_buddy(event[1].buddyID, event[1].state)
         if(event[0] == "Disconnected"):
             print "Disconnected"
             gtk.main_quit()
@@ -338,8 +339,8 @@ def listen_loop():
 # If the program is run directly or passed as an argument to the python
 # interpreter then create a HelloWorld instance and show it
 if __name__ == "__main__":
-    conversations = Conversations()
-    blist = BuddyList()
+    convwin = ConvWindow()
+    buddywin = BuddyWindow()
     listen_thread = threading.Thread(target = listen_loop)
     listen_thread.start()
     gobject.threads_init()
