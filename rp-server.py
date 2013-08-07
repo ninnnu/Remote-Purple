@@ -29,6 +29,8 @@ _ONLINE = ("offline", "online")
 
 connected_clients = 0
 
+accounts = {}
+
 ## Classes ##
 
 class Conversation:
@@ -53,20 +55,28 @@ class Conversation:
             message.sender = msg['sender']
             message.message = msg['message']
             message.timestamp = msg['timestamp']
+            message.sent = msg['sent']
         return pb    
         
     def _refresh_history(self):
+        global accounts
         msghistory = purple.PurpleConversationGetMessageHistory(self.ID)
         msghistory.reverse() # By default newest is first
         for msg in msghistory:
             msg_text = purple.PurpleConversationMessageGetMessage(msg)
             msg_timestamp = purple.PurpleConversationMessageGetTimestamp(msg)
             msg_sender = purple.PurpleConversationMessageGetSender(msg)
-            self.messages.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp})
+            if(msg_sender == accounts[self.accountID]['username']):
+                sent = True
+            elif(msg_sender == accounts[self.accountID]['name']):
+                sent = True
+            else:
+                sent = False
+            self.messages.append({"message": msg_text, "sender": msg_sender, "timestamp": msg_timestamp, "sent": sent})
         return
 
-    def new_message(self, sender, message):
-        self.messages.append({"message": message, "sender": sender, "timestamp": int(time.time())})
+    def new_message(self, sender, message, sent = False):
+        self.messages.append({"message": message, "sender": sender, "timestamp": int(time.time()), "sent": sent})
         return
 
     def get_name(self):
@@ -165,6 +175,7 @@ def build_status():
             buddy.alias = buddy_d['alias']
             buddy.state = _ONLINE[buddy_d['online']] # Only offline/online for now
             buddy.extended_status = buddy_d['extstatus']
+            buddy.name = buddy_d['name']
     for conv in convs:
         conversation = status.conversations.add()
         conversation.MergeFrom(convs[conv].get_protobuf())
@@ -247,13 +258,14 @@ def msg_received(account, sender, message, conv, flags):
     IM.sender = sender
     IM.message = message
     IM.timestamp = int(time.time())
+    IM.sent = False
     IM_ser = IM.SerializeToString()
     
     if conv in convs:
-       convs[conv].new_message(sender, message)
+       convs[conv].new_message(sender, message, sent=False)
     else:
        convs[conv] = Conversation(conv, name, account)
-       convs[conv].new_message(sender, message)
+       convs[conv].new_message(sender, message, sent=False)
     for clientID in clients:
         client = clients[clientID]
         if((client != None) and (client.authenticated == True)):
@@ -285,10 +297,10 @@ def im_sent(account, receiver, message):
     IM_ser = IM.SerializeToString()
     
     if conv in convs:
-       convs[conv].new_message(sender, message)
+       convs[conv].new_message(sender, message, sent=True)
     else:
        convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
-       convs[conv].new_message(sender, message)
+       convs[conv].new_message(sender, message, sent=True)
     for clientID in clients:
         client = clients[clientID]
         if((client != None) and (client.authenticated == True)):
@@ -344,6 +356,8 @@ def buddy_signed_on(buddyID):
     presence = purple_pb2.Presence()
     presence.buddyID = buddyID 
     presence.state = "online"
+    presence.name = purple.PurpleBuddyGetName(buddyID)
+    presence.accountID = accountID
     
     for clientID in clients:
         client = clients[clientID]
@@ -362,7 +376,9 @@ def buddy_signed_off(buddyID):
     presence = purple_pb2.Presence()
     presence.buddyID = buddyID 
     presence.state = "offline"
-    
+    presence.name = purple.PurpleBuddyGetName(buddyID)
+    presence.accountID = accountID    
+
     for clientID in clients:
         client = clients[clientID]
 
@@ -431,11 +447,6 @@ bus.add_signal_receiver(buddy_signed_off,
                         dbus_interface="im.pidgin.purple.PurpleInterface",
                         signal_name="BuddySignedOff")
 
-convs_raw = purple.PurpleGetIms()
-convs = dict()
-for conv in convs_raw:
-    convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
-
 accounts_raw = purple.PurpleAccountsGetAllActive()
 accounts = dict()
 for accountID in accounts_raw:
@@ -452,8 +463,15 @@ for accountID in accounts_raw:
                  "name": purple.PurpleBuddyGetName(buddyID), 
                  "online": purple.PurpleBuddyIsOnline(buddyID),
                  "extstatus":  purple.PurpleStatusGetAttrString(purple.PurplePresenceGetActiveStatus(purple.PurpleBuddyGetPresence(buddyID)), "message")}
+        if(len(buddy['alias']) < 1): # No user-friendly name available
+            buddy['alias'] = buddy['name']
         account['buddies'][buddyID] = buddy
     accounts[accountID] = account
+
+convs_raw = purple.PurpleGetIms()
+convs = dict()
+for conv in convs_raw:
+    convs[conv] = Conversation(conv, purple.PurpleConversationGetName(conv), purple.PurpleConversationGetAccount(conv))
 
 clients = dict()
 client_threads = list()
