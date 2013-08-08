@@ -5,10 +5,78 @@ import purple_pb2
 class AuthError(Exception):
     pass
 
+class IM:
+    def __init__(self, ts, sender, message, sent = False):
+        self.timestamp = ts
+        self.sender = sender
+        self.message = message
+        self.sent = sent
+
+class Conversation:
+    def __init__(self, convID, accID, name):
+        self.convID = convID
+        self.accountID = accID
+        self.name = name
+        self.messages = list()
+        self.buddyID = None
+
+    def add_im(self, pb_im):
+        self.messages.append(IM(pb_im.timestamp, pb_im.sender, pb_im.message, pb_im.sent))
+
+    def get_convID(self):
+        return self.convID
+
+class Buddy:
+    def __init__(self, buddyID, accID, address, alias, state):
+        self.buddyID = buddyID
+        self.accountID = accID
+        self.address = address
+        self.alias = alias
+        self.state = state
+        self.conversationID = None
+
+    def set_conversationID(self, newid):
+        self.conversationID = newid
+
+    def get_alias(self):
+        return self.alias
+
+    def get_address(self):
+        return self.address
+
+    def get_conversationID(self):
+        return self.conversationID
+
+class Account:
+    def __init__(self, accID, address, alias, state):
+        self.accountID = accID
+        self.address = address
+        self.alias = alias
+        self.state = state
+        self.conversations = dict()
+        self.buddies = dict()
+
+    def add_buddy(self, pb_buddy):
+        self.buddies[pb_buddy.buddyID] = Buddy(pb_buddy.buddyID, self.accountID, pb_buddy.name, pb_buddy.alias, pb_buddy.state)
+
+    def add_conversation(self, conversation):
+        self.conversations[conversation.convID] = conversation
+
+    def buddyname2id(self, bname):
+        for bid in self.buddies:
+            if(self.buddies[bid].address == bname):
+                return bid
+        return None
+
+    def get_buddy(self, buddyID):
+        return self.buddies[buddyID]
+
 class RPClient:
     def __init__(self, host, port, password):
-        self.orphans = list() # Orphan received messages. I.e received messages although there's no conversation.
         self.status = purple_pb2.Status()
+        self.accounts = dict()
+        self.conversations = dict()
+        self.buddies = dict()
         self.s = socket.socket()
         self.s.settimeout(3*60) # 3 minutes
         try:
@@ -26,10 +94,16 @@ class RPClient:
             print "[RPClient] Password accepted"
         self.status.ParseFromString(self._receive())
         
-        self.buddies = dict()
         for account in self.status.accounts:
+            self.accounts[account.accountID] = Account(account.accountID, account.ownpresence.name, account.ownpresence.alias, account.ownpresence.state)
             for buddy in account.buddylist:
-                self.buddies[buddy.buddyID] = buddy
+                self.accounts[account.accountID].add_buddy(buddy)
+                self.buddies[buddy.buddyID] = self.accounts[account.accountID].get_buddy(buddy.buddyID)
+        for pb_conv in self.status.conversations:
+            self.conversations[pb_conv.conversationID] = Conversation(pb_conv.conversationID, pb_conv.accountID, pb_conv.name)
+            for im in pb_conv.messages:
+                self.conversations[pb_conv.conversationID].add_im(im)
+            self.accounts[pb_conv.accountID].add_conversation(self.conversations[pb_conv.conversationID])          
 
     def _receive(self):
         # Protocol: <payload length>;<payload>
@@ -104,10 +178,21 @@ class RPClient:
         return self.status.accounts
     
     def get_conversations(self):
-        return self.status.conversations
+        return self.conversations
+    
+    def get_conversation(self, convid):
+        return self.conversation[convid]
+
+    def get_buddyalias(self, buddyid):
+        return self.buddies[buddyid].alias
 
     def get_buddyname(self, buddyid):
-        return self.buddies[buddyid].alias
+        return self.buddies[buddyid].name
+
+    def buddy_name2alias(self, name):
+        for buddyID in self.buddies:
+            if(self.buddies[buddyID].get_address() == name):
+                return self.buddies[buddyID].get_alias()
 
     def protosend(self, payload, payload_type=None):
         # Send message in Remote Purple-protocol ("<payload length>;<payload>")
