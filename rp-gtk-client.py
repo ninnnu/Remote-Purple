@@ -28,6 +28,8 @@ except:
     print "Connecting to server failed"
     exit(1)
 
+pynotify.init("RemotePurple")
+
 class Conversations:
     def key_event(self, widget, event, convID):
         keyname = gtk.gdk.keyval_name(event.keyval)
