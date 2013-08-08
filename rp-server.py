@@ -4,6 +4,7 @@ import dbus, gobject
 from dbus.mainloop.glib import DBusGMainLoop
 from dbus.mainloop.glib import threads_init as dbus_threads_init
 
+import os
 import sys
 import time
 import socket
@@ -11,10 +12,24 @@ import threading
 
 import purple_pb2
 
+__password__ = None
+try:
+    pwfile = file("remotepass","r")
+    __password__ = pwfile.read().strip()
+    pwfile.close()
+    if(oct(os.stat("remotepass").st_mode)[-2:] <> '00'):
+        print "[RemotePurple Server] The file that contains your password may be readable by other users of this system."
+        print "                      Suggestion: chmod 600 remotepass"
+except:
+    pass
+
 if(len(sys.argv) == 2):
     __password__ = sys.argv[1]
-else:
-    print "[SERVER] Usage: rp-server.py password"
+    print "[RemotePurple Server] Password set via argument. This may let other users see the password."
+elif(__password__ == None):
+    print "[RemotePurple Server] First-time start for secure-ish use: echo password > remotepass; chmod 600 remotepass; ./rp-server.py"
+    print "[RemotePurple Server] Normal usage: ./rp-server.py"
+    print "[RemotePurple Server] Unsecure usage: rp-server.py password"
     exit(1)
 
 __DEBUG__ = True
@@ -201,7 +216,7 @@ def parse_command(command, clientID):
         rectype = command[:command.find(";")]
         payload = command[command.find(";")+1:]
 
-    print "[SERVER] Received: "+rectype
+    print "[RemotePurple Server] Received: "+rectype
     if(rectype == "IM"):
         im = purple_pb2.IM()
         im.ParseFromString(payload)
@@ -251,7 +266,7 @@ def msg_received(account, sender, message, conv, flags):
         return
     global clients
     global convs
-    print "[SERVER] IM GET: "+sender+": "+message
+    print "[RemotePurple Server] IM GET: "+sender+": "+message
     
     IM = purple_pb2.IM()
     IM.conversation = conv
@@ -279,7 +294,7 @@ def im_sent(account, receiver, message):
     global clients
     global convs
     if(__DEBUG__):
-        print "[SERVER] IM SENT -> "+receiver+": "+message
+        print "[RemotePurple Server] IM SENT -> "+receiver+": "+message
     sender = purple.PurpleAccountGetUsername(account)
     # Figure out conversationID
     conv = 0
@@ -480,7 +495,7 @@ serversocket.bind(('0.0.0.0', 7890))
 serversocket.listen(5)
 client_threads.append(threading.Thread(target = _accept_connection, args=(0,)))
 client_threads[0].start()
-print "[SERVER] Accepting connections"
+print "[RemotePurple Server] Accepting connections"
 
 loop = gobject.MainLoop()
 gobject.threads_init()
